@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { readdir } from "node:fs/promises";
 import { homedir } from "node:os";
-import { basename, join, resolve } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import { WorkflowError } from "./types.js";
 import { isNodeError } from "./utils.js";
 
@@ -13,8 +13,16 @@ export function projectStorageKey(cwd: string): string {
   return `${slug}-${createHash("sha256").update(exact).digest("hex").slice(0, 12)}`;
 }
 
+// Workflow state lives next to pi's agent dir: `$PI_CODING_AGENT_DIR/../workflows`
+// (XDG: ~/.config/pi/workflows). `~/.pi/workflows` only when the env var is unset.
+// An explicit non-default `home` (tests, `--home`) always wins and ignores the env.
+export function workflowsDirectory(home = homedir()): string {
+  const agentDir = process.env.PI_CODING_AGENT_DIR;
+  if (agentDir && home === homedir()) return join(dirname(resolve(agentDir)), "workflows");
+  return join(home, ".pi", "workflows");
+}
 export function projectSessionsDirectory(cwd: string, home = homedir()): string {
-  return join(home, ".pi", "workflows", "projects", projectStorageKey(cwd), "sessions");
+  return join(workflowsDirectory(home), "projects", projectStorageKey(cwd), "sessions");
 }
 export function runsDirectory(cwd: string, sessionId: string, home = homedir()): string {
   return join(projectSessionsDirectory(cwd, home), safePart(sessionId), "runs");
