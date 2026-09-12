@@ -2,11 +2,12 @@ import assert from "node:assert/strict";
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, symlinkSync, utimesSync, writeFileSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
-import { tmpdir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import { join, relative } from "node:path";
 import test from "node:test";
 import { acquireSessionLease, createLaunchSnapshot, DEFAULT_SETTINGS, FairAgentScheduler, WorkflowError } from "../src/index.js";
 import { hasLiveSessionLease, listRunIds, projectStorageKey, RunStore, runsDirectory, structuralPath } from "../src/persistence.js";
+import { workflowsDirectory } from "../src/paths.js";
 import { decodeTestJsonRecord, isTestRecord } from "./support.js";
 
 const snapshot = createLaunchSnapshot({ script: "export const meta={name:'x',description:'x'}", args: { answer: 42 }, metadata: { name: "x", description: "x" }, settings: DEFAULT_SETTINGS, models: ["openai/gpt"], tools: ["read"], agentTypes: [], schemas: [] });
@@ -761,4 +762,17 @@ void test("authoritative state writes survive summary projection failures", asyn
   const journal = decodeTestJsonRecord(readFileSync(join(journalStore.directory, "journal.json"), "utf8"));
   if (!isTestRecord(journal.completed)) throw new Error("Persisted journal completed entries were malformed");
   assert.deepEqual(journal.completed["agent/one"], { path: "agent/one", value: "done" });
+});
+
+void test("workflowsDirectory follows PI_CODING_AGENT_DIR and falls back to ~/.pi only when unset", () => {
+  const previous = process.env.PI_CODING_AGENT_DIR;
+  try {
+    process.env.PI_CODING_AGENT_DIR = "/xdg/pi/agent";
+    assert.equal(workflowsDirectory(), "/xdg/pi/workflows");
+    assert.equal(workflowsDirectory("/tmp/other-home"), join("/tmp/other-home", ".pi", "workflows"));
+    delete process.env.PI_CODING_AGENT_DIR;
+    assert.equal(workflowsDirectory(), join(homedir(), ".pi", "workflows"));
+  } finally {
+    if (previous === undefined) delete process.env.PI_CODING_AGENT_DIR; else process.env.PI_CODING_AGENT_DIR = previous;
+  }
 });
